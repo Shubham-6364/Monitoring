@@ -1,32 +1,31 @@
-
 This setup includes:
 
-Node Exporter as a DaemonSet
-
-Prometheus as a Deployment with a Service
-
-Grafana with Prometheus as a data source
-
-
+* Node Exporter as a DaemonSet
+* Prometheus as a Deployment with a Service
+* Grafana with Prometheus as a data source
 
 ---
 
-✅ Step 1: Create a Namespace (Optional but recommended)
-
+## ✅ Step 1: Create a Namespace (Optional but recommended)
+### `namespace.yaml`
+```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: monitoring
+```
 
 Apply:
 
+```bash
 kubectl apply -f namespace.yaml
-
+```
 
 ---
 
-✅ Step 2: Deploy Node Exporter (as a DaemonSet)
-
+## ✅ Step 2: Deploy Node Exporter (as a DaemonSet)
+### `node-exporter.yaml`
+```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -76,14 +75,15 @@ spec:
   ports:
     - port: 9100
       targetPort: 9100
-
+```
 
 ---
 
-✅ Step 3: Deploy Prometheus
+## ✅ Step 3: Deploy Prometheus
 
-prometheus-config.yaml
+### `prometheus-config.yaml`
 
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -106,9 +106,11 @@ data:
           - source_labels: [__meta_kubernetes_service_label_app]
             action: keep
             regex: node-exporter
+```
 
-prometheus-deployment.yaml
+### `prometheus-deployment.yaml`
 
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -151,12 +153,13 @@ spec:
     - port: 9090
       targetPort: 9090
   type: NodePort
-
+```
 
 ---
 
-✅ Step 4: Deploy Grafana
-
+## ✅ Step 4: Deploy Grafana
+### `grafana.yaml`
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -190,46 +193,110 @@ spec:
     - port: 3000
       targetPort: 3000
   type: NodePort
-
-
----
-
-✅ Step 5: Access the Dashboards
-
-Grafana UI: http://<node-ip>:<NodePort>
-
-Default credentials:
-
-User: admin
-
-Password: admin
-
-
-
-> In Grafana, add Prometheus as a data source:
-
-
-
-URL: http://prometheus.monitoring.svc.cluster.local:9090
-
-
-Then import dashboards like Node Exporter ID: 1860.
-
+```
 
 ---
 
-📦 Apply All:
+## 📦 Apply All:
 
 Save each YAML to a separate file and run:
 
+```bash
 kubectl apply -f namespace.yaml
 kubectl apply -f node-exporter.yaml
 kubectl apply -f prometheus-config.yaml
 kubectl apply -f prometheus-deployment.yaml
 kubectl apply -f grafana.yaml
+```
 
+---
+## ✅ Step 5: Access the Dashboards
+
+* **Grafana UI**: `http://<node-ip>:<NodePort>`
+* Default credentials:
+
+  * **User**: `admin`
+  * **Password**: `admin`
+
+> In Grafana, add **Prometheus** as a data source:
+
+* URL: `http://prometheus.monitoring.svc.cluster.local:9090`
+
+Then import dashboards like Node Exporter ID: `1860`.
 
 ---
 
+## **ConfigMap for Kubernetes that supports both:**
 
+1. ✅ **Static targets** (for known IPs of worker nodes running Node Exporter)
+2. ✅ **Kubernetes service discovery** (for Node Exporter DaemonSet with label `app: node-exporter`)
+
+---
+
+### 📄 `prometheus-config.yaml`
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+
+      # Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Node Exporter - Static Targets
+      - job_name: 'node-exporter-static'
+        static_configs:
+          - targets: ['192.168.1.101:9100', '192.168.1.102:9100']  # Replace with your worker node IPs
+
+      # Node Exporter - Kubernetes SD (via Service with label app=node-exporter)
+      - job_name: 'node-exporter-kubernetes'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            action: keep
+            regex: node-exporter
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: metrics
+```
+
+---
+
+### ✅ Steps to Use:
+
+1. **Save this file** as `prometheus-config.yaml`.
+
+2. **Apply it to your cluster**:
+
+   ```bash
+   kubectl apply -f prometheus-config.yaml
+   ```
+
+3. **Restart Prometheus pod** (if not using a config reloader):
+
+   ```bash
+   kubectl delete pod -n monitoring -l app=prometheus
+   ```
+
+---
+
+### 🛠 Notes:
+
+* **`192.168.1.101:9100`** — Replace with actual IPs of your worker nodes.
+* **Kubernetes SD section** assumes:
+
+  * A `Service` exists selecting pods with label `app=node-exporter`.
+  * The port name in the Service is `metrics`.
 
