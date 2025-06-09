@@ -57,7 +57,13 @@ ExecStart=/usr/local/bin/prometheus \
 [Install]
 WantedBy=multi-user.target
 ```
+```
+cp prometheus.yml /etc/prometheus/
+```
 
+```
+sudo chown prometheus:prometheus /etc/prometheus/prometheus.yml
+```
 ### 5. Enable and Start Prometheus
 
 ```bash
